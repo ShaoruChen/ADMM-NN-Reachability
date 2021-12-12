@@ -43,6 +43,10 @@ def nn_dynamics(n=2, m = 100):
     return model
 
 if __name__ == '__main__':
+    '''Use fast linear bounds (LiRPA) to initialize all the pre-activation bounds and call ADMM or Gurobi to solve the 
+        LP to find the output bounds. '''
+
+
     is_train = False
     nn_width = 400
 
@@ -83,9 +87,6 @@ if __name__ == '__main__':
     nn_system = torch.load(nn_file_name)
 
     nx = 2
-    # x0 = torch.tensor([[1.0, 1.0]]).to(device)
-    # x0 = torch.tensor([[0.0,0.0]]).to(device)
-
     x0 = torch.tensor([[0.2,0.2]])
 
     epsilon = 0.02
@@ -166,7 +167,6 @@ if __name__ == '__main__':
     # full LP result
     # LP_result = torch.load('LP_result_width_100_horizon_5_radius_1.0.pt')
     # full_LP_output_set = Polyhedron(LP_result['output_bds']['A'], LP_result['output_bds']['b'])
-
 
     plt.figure()
     domain = Polyhedron.from_bounds(x0_lb[0].detach().numpy(), x0_ub[0].detach().numpy())

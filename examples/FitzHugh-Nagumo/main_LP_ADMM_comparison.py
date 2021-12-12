@@ -14,8 +14,10 @@ import nn_reachability.utilities as ut
 import matplotlib.pyplot as plt
 from nn_reachability.nn_models import SequentialModel, SystemDataSet, train_nn_torch
 from nn_reachability.ADMM import init_sequential_admm_session, run_ADMM, intermediate_bounds_from_ADMM, InitModule, ADMM_Session
+from nn_reachability.nn_models import iterative_output_Lp_bounds_LiRPA, output_Lp_bounds_LiRPA
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
 
 ''' FitzHugh-Nagumo Neuron Model from 
 Semidefinite Approximations of Reachable Sets for Discrete-time Polynomial Systems, Morgan et al., 2019'''
@@ -35,19 +37,17 @@ def nn_dynamics(n=2, m = 100):
         nn.ReLU(),
         nn.Linear(m, m),
         nn.ReLU(),
-        nn.Linear(m, m),
-        nn.ReLU(),
-        nn.Linear(m, m),
-        nn.ReLU(),
         nn.Linear(m, n)
     )
     return model
 
 if __name__ == '__main__':
+    '''Compare ADMM and Gurobi in solving the LP propagator in the one-shot method'''
+
     is_train = False
     nn_width = 100
 
-    nn_file_name = 'nn_model_4_layer_' + str(nn_width) + '_neuron.pt'
+    nn_file_name = 'nn_model_2_layer_' + str(nn_width) + '_neuron.pt'
 
     if is_train:
         '''train a neural network to approximate the given dynamics'''
@@ -80,18 +80,19 @@ if __name__ == '__main__':
     finite step reachability analysis
     '''
     torch.set_grad_enabled(False)
-
     nn_system = torch.load(nn_file_name)
 
     nx = 2
-    x0 = torch.tensor([[-1.75, -1.75]]).to(device)
+    # x0 = torch.tensor([[1.0, 1.0]]).to(device)
+    # x0 = torch.tensor([[0.0,0.0]]).to(device)
 
-    epsilon = 0.5
+    x0 = torch.tensor([[0.0, 0.0]]).to(device)
+
+    epsilon = 1.0
     x0_lb = x0 - epsilon
     x0_ub = x0 + epsilon
 
-
-    horizon = 10
+    horizon = 5
 
     skip_LP = True
 
@@ -99,7 +100,6 @@ if __name__ == '__main__':
     # LP method
     ######################################
     if not skip_LP:
-        x0 = torch.zeros(2)
         nx = 2
 
         A_input = np.vstack((np.eye(nx), -np.eye(nx)))
@@ -113,8 +113,8 @@ if __name__ == '__main__':
         # view the sampled trajectories
         # plt.figure()
         # domain = Polyhedron(A_input, b_input)
-        # init_states = ut.unif_sample_from_Polyhedron(domain, 5)
-        # traj_list = ut.simulate_NN_system(nn_system, init_states, step=30)
+        # init_states = ut.unif_sample_from_Polyhedron(domain, 8)
+        # traj_list = ut.simulate_NN_system(nn_system, init_states, step=100)
         #
         # ut.plot_multiple_traj_tensor_to_numpy(traj_list)
         # domain.plot(fill=False, ec='r', linestyle='-.', linewidth=2)
@@ -134,16 +134,14 @@ if __name__ == '__main__':
     #######################################################
     # ADMM method
     ######################################################
-    # fixme: need to test if codes work on GPUs
-
-    alg_options = {'rho': 0.1, 'eps_abs': 1e-5, 'eps_rel': 1e-4, 'residual_balancing': False, 'max_iter': 20000,
-                   'record': False, 'verbose': True}
+    alg_options = {'rho': 0.1, 'eps_abs': 1e-4, 'eps_rel': 1e-3, 'residual_balancing': False, 'max_iter': 20000,
+                   'record': False, 'verbose': True, 'alpha': 1.6}
 
     nn_system.to(device)
     base_nn_model_list = list(nn_system)
     nn_layers_list = base_nn_model_list * horizon
 
-    ADMM_suffix = '_horizon_' + str(horizon) + '_radius_' + str(epsilon) + '_eps_abs_' + str(alg_options['eps_abs']) + '_new.pt'
+    ADMM_suffix = '_horizon_' + str(horizon) + '_radius_' + str(epsilon) + '_eps_abs_' + str(alg_options['eps_abs']) + '.pt'
 
     file_name = 'ADMM_intermediate_bounds' + '_width_' + str(nn_width) + ADMM_suffix
     load_file = 0
@@ -199,25 +197,8 @@ if __name__ == '__main__':
     plt.plot(solver_time_list, '-o')
     plt.xlabel('layer numer')
     plt.ylabel('solver time [s]')
+    plt.title('ADMM solver time')
     print('ADMM total solver time: {}'.format(sum(solver_time_list)))
     plt.show()
 
-    # # compare runtime
-    # LP_result = torch.load('LP_result_nn_large_new.pt')
-    # solver_time_LP = LP_result['solver_time_seq']
-    #
-    # ADMM_result_low = torch.load('ADMM_result_nn_large_low_precision.pt')
-    # solver_time_admm_low = ADMM_result_low['pre_act_bds_runtime']
-    # solver_time_admm_low.append(ADMM_result_low['output_admm_runtime'])
-    #
-    # ADMM_result_high = torch.load('ADMM_result_nn_large.pt')
-    # solver_time_admm_high = ADMM_result_high['pre_act_bds_runtime']
-    # solver_time_admm_high.append(ADMM_result_high['output_admm_runtime'])
-    #
-    # plt.figure()
-    # plt.plot(solver_time_LP,'-o', label = 'Gurobi')
-    # plt.plot(solver_time_admm_high, '-s', label = 'ADMM high prec.')
-    # plt.plot(solver_time_admm_low, '-^', label = 'ADMM low prec.')
-    # plt.xlabel('activation layer numer')
-    # plt.ylabel('solver time [s]')
-    # plt.legend()
+
